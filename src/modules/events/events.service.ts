@@ -93,6 +93,12 @@ export class EventsService {
         pinHash:
           dto.privacy === 'pin' && dto.pin ? this.hashPin(dto.pin) : null,
         allowDownloads: dto.allowDownloads ?? true,
+        allowVideos: dto.allowVideos ?? true,
+        allowVoice: dto.allowVoice ?? false,
+        challengesOn: dto.challengesOn ?? false,
+        bestOfOn: dto.bestOfOn ?? false,
+        disposableOn: dto.disposableOn ?? false,
+        photosPerGuest: dto.photosPerGuest ?? 12,
         maxPhotos: dto.maxPhotos ?? 150,
       },
       include: eventInclude,
@@ -279,6 +285,30 @@ export class EventsService {
 
     if (dto.allowDownloads !== undefined) {
       data.allowDownloads = dto.allowDownloads;
+    }
+
+    if (dto.allowVideos !== undefined) {
+      data.allowVideos = dto.allowVideos;
+    }
+
+    if (dto.allowVoice !== undefined) {
+      data.allowVoice = dto.allowVoice;
+    }
+
+    if (dto.challengesOn !== undefined) {
+      data.challengesOn = dto.challengesOn;
+    }
+
+    if (dto.bestOfOn !== undefined) {
+      data.bestOfOn = dto.bestOfOn;
+    }
+
+    if (dto.disposableOn !== undefined) {
+      data.disposableOn = dto.disposableOn;
+    }
+
+    if (dto.photosPerGuest !== undefined) {
+      data.photosPerGuest = dto.photosPerGuest;
     }
 
     if (dto.maxPhotos !== undefined) {

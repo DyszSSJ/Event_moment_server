@@ -29,6 +29,12 @@ model Event {
   privacy         EventPrivacy  @default(PUBLIC)
   pinHash         String?
   allowDownloads  Boolean       @default(true)
+  allowVideos     Boolean       @default(true)
+  allowVoice      Boolean       @default(false)
+  challengesOn    Boolean       @default(false)
+  bestOfOn        Boolean       @default(false)
+  disposableOn    Boolean       @default(false)
+  photosPerGuest  Int           @default(12)
   maxPhotos       Int?
   views           Int           @default(0)
   createdAt       DateTime      @default(now())

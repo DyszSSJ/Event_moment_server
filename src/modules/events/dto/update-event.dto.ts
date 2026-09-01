@@ -59,6 +59,32 @@ export class UpdateEventDto {
   allowDownloads?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  allowVideos?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowVoice?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  challengesOn?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  bestOfOn?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disposableOn?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(150)
+  photosPerGuest?: number;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(5000)

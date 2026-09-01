@@ -39,6 +39,7 @@ export class PhotosService {
       });
     }
 
+    const guestKey = this.createGuestKey(dto.displayName, dto.email);
     const event = await this.prisma.event.findUnique({
       where: { slug },
       include: {
@@ -64,20 +65,22 @@ export class PhotosService {
       where: {
         eventId_guestKey: {
           eventId: event.id,
-          guestKey: this.createGuestKey(dto.displayName, dto.email),
+          guestKey,
         },
       },
       create: {
         eventId: event.id,
         displayName: dto.displayName.trim(),
         email: dto.email?.trim() || null,
-        guestKey: this.createGuestKey(dto.displayName, dto.email),
+        guestKey,
       },
       update: {
         displayName: dto.displayName.trim(),
         email: dto.email?.trim() || null,
       },
     });
+
+    await this.assertParticipantCanUpload(event, participant.id, files.length);
 
     const photos = await this.prisma.$transaction(
       files.map((file) =>
@@ -355,6 +358,8 @@ export class PhotosService {
       pinHash: string | null;
       uploadClosesAt: Date | null;
       maxPhotos: number | null;
+      disposableOn: boolean;
+      photosPerGuest: number;
       _count: { photos: number };
     },
     pin: string | undefined,
@@ -395,6 +400,35 @@ export class PhotosService {
         statusCode: 403,
         code: 'EVENT_PHOTO_LIMIT_REACHED',
         message: 'Event photo limit reached',
+      });
+    }
+  }
+
+  private async assertParticipantCanUpload(
+    event: {
+      id: string;
+      disposableOn: boolean;
+      photosPerGuest: number;
+    },
+    participantId: string,
+    filesCount: number,
+  ) {
+    if (!event.disposableOn) {
+      return;
+    }
+
+    const currentCount = await this.prisma.photo.count({
+      where: {
+        eventId: event.id,
+        participantId,
+      },
+    });
+
+    if (currentCount + filesCount > event.photosPerGuest) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'PARTICIPANT_PHOTO_LIMIT_REACHED',
+        message: 'Participant photo limit reached',
       });
     }
   }
