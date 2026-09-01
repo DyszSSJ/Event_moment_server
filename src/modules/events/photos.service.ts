@@ -171,6 +171,87 @@ export class PhotosService {
     };
   }
 
+  async downloadApprovedPhotos(slug: string, pin?: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { slug },
+      select: {
+        name: true,
+        slug: true,
+        privacy: true,
+        pinHash: true,
+        allowDownloads: true,
+        photos: {
+          where: {
+            status: PhotoStatus.APPROVED,
+            data: { not: null },
+          },
+          orderBy: { uploadedAt: 'asc' },
+          select: {
+            id: true,
+            data: true,
+            mimeType: true,
+            uploadedAt: true,
+            participant: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      throw new NotFoundException({
+        statusCode: 404,
+        code: 'EVENT_NOT_FOUND',
+        message: 'Event not found',
+      });
+    }
+
+    if (!event.allowDownloads) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EVENT_DOWNLOADS_DISABLED',
+        message: 'Event downloads are disabled',
+      });
+    }
+
+    if (
+      event.privacy === EventPrivacy.PIN_PROTECTED &&
+      event.pinHash !== this.hashPin(pin ?? '')
+    ) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'INVALID_EVENT_PIN',
+        message: 'Invalid event PIN',
+      });
+    }
+
+    if (!event.photos.length) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'NO_APPROVED_PHOTOS',
+        message: 'There are no approved photos to download',
+      });
+    }
+
+    const files = event.photos.map((photo, index) => ({
+      name: this.createDownloadFileName(
+        event.slug,
+        photo.participant?.displayName,
+        photo.mimeType,
+        index + 1,
+      ),
+      data: Buffer.from(photo.data ?? []),
+    }));
+
+    return {
+      fileName: `${this.slugify(event.name)}-recuerdos.zip`,
+      data: this.createZip(files),
+    };
+  }
+
   async listPublicPhotos(slug: string) {
     const photos = await this.prisma.photo.findMany({
       where: {
@@ -367,5 +448,118 @@ export class PhotosService {
     } satisfies Record<typeof status, PhotoStatus>;
 
     return statusMap[status];
+  }
+
+  private createDownloadFileName(
+    slug: string,
+    guest: string | undefined,
+    mimeType: string,
+    index: number,
+  ) {
+    const guestSlug = this.slugify(guest ?? 'invitado');
+    const extension = this.getFileExtension(mimeType);
+
+    return `${slug}/${String(index).padStart(3, '0')}-${guestSlug}.${extension}`;
+  }
+
+  private getFileExtension(mimeType: string) {
+    const extensionMap: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+    };
+
+    return extensionMap[mimeType] ?? 'jpg';
+  }
+
+  private createZip(files: Array<{ name: string; data: Buffer }>) {
+    const localParts: Buffer[] = [];
+    const centralParts: Buffer[] = [];
+    let offset = 0;
+
+    for (const file of files) {
+      const name = Buffer.from(file.name, 'utf8');
+      const crc = this.crc32(file.data);
+      const localHeader = Buffer.alloc(30);
+
+      localHeader.writeUInt32LE(0x04034b50, 0);
+      localHeader.writeUInt16LE(20, 4);
+      localHeader.writeUInt16LE(0x0800, 6);
+      localHeader.writeUInt16LE(0, 8);
+      localHeader.writeUInt16LE(0, 10);
+      localHeader.writeUInt16LE(0, 12);
+      localHeader.writeUInt32LE(crc, 14);
+      localHeader.writeUInt32LE(file.data.length, 18);
+      localHeader.writeUInt32LE(file.data.length, 22);
+      localHeader.writeUInt16LE(name.length, 26);
+      localHeader.writeUInt16LE(0, 28);
+
+      localParts.push(localHeader, name, file.data);
+
+      const centralHeader = Buffer.alloc(46);
+      centralHeader.writeUInt32LE(0x02014b50, 0);
+      centralHeader.writeUInt16LE(20, 4);
+      centralHeader.writeUInt16LE(20, 6);
+      centralHeader.writeUInt16LE(0x0800, 8);
+      centralHeader.writeUInt16LE(0, 10);
+      centralHeader.writeUInt16LE(0, 12);
+      centralHeader.writeUInt16LE(0, 14);
+      centralHeader.writeUInt32LE(crc, 16);
+      centralHeader.writeUInt32LE(file.data.length, 20);
+      centralHeader.writeUInt32LE(file.data.length, 24);
+      centralHeader.writeUInt16LE(name.length, 28);
+      centralHeader.writeUInt16LE(0, 30);
+      centralHeader.writeUInt16LE(0, 32);
+      centralHeader.writeUInt16LE(0, 34);
+      centralHeader.writeUInt16LE(0, 36);
+      centralHeader.writeUInt32LE(0, 38);
+      centralHeader.writeUInt32LE(offset, 42);
+
+      centralParts.push(centralHeader, name);
+      offset += localHeader.length + name.length + file.data.length;
+    }
+
+    const centralDirectory = Buffer.concat(centralParts);
+    const endHeader = Buffer.alloc(22);
+
+    endHeader.writeUInt32LE(0x06054b50, 0);
+    endHeader.writeUInt16LE(0, 4);
+    endHeader.writeUInt16LE(0, 6);
+    endHeader.writeUInt16LE(files.length, 8);
+    endHeader.writeUInt16LE(files.length, 10);
+    endHeader.writeUInt32LE(centralDirectory.length, 12);
+    endHeader.writeUInt32LE(offset, 16);
+    endHeader.writeUInt16LE(0, 20);
+
+    return Buffer.concat([...localParts, centralDirectory, endHeader]);
+  }
+
+  private crc32(data: Buffer) {
+    let crc = 0xffffffff;
+
+    for (const byte of data) {
+      crc ^= byte;
+
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+      }
+    }
+
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  private slugify(value: string) {
+    return (
+      value
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 48) || 'archivo'
+    );
   }
 }

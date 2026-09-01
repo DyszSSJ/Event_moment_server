@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UploadedFiles,
@@ -54,6 +55,24 @@ export class PhotosController {
       files,
       this.getPublicOrigin(request),
     );
+  }
+
+  @Get(':slug/photos/download')
+  async downloadPhotos(
+    @Param('slug') slug: string,
+    @Query('pin') pin: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const download = await this.photosService.downloadApprovedPhotos(slug, pin);
+
+    response.setHeader('Content-Type', 'application/zip');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${download.fileName}"`,
+    );
+    response.setHeader('Content-Length', download.data.length.toString());
+
+    return new StreamableFile(download.data);
   }
 
   @Get(':slug/photos/:photoId/file')
