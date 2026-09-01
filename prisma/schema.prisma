@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique
+  email     String?
+  events    Event[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Event {
+  id              String        @id @default(uuid())
+  ownerId         String
+  name            String
+  slug            String        @unique
+  description     String?
+  coverUrl        String?
+  eventDate       DateTime?
+  uploadClosesAt  DateTime?
+  revealAt        DateTime?
+  status          EventStatus   @default(DRAFT)
+  privacy         EventPrivacy  @default(PUBLIC)
+  pinHash         String?
+  allowDownloads  Boolean       @default(true)
+  maxPhotos       Int?
+  views           Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  participants Participant[]
+  photos       Photo[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([eventDate])
+}
+
+model Participant {
+  id          String   @id @default(uuid())
+  eventId     String
+  displayName String
+  email       String?
+  guestKey    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event  Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  photos Photo[]
+
+  @@unique([eventId, guestKey])
+  @@index([eventId])
+}
+
+model Photo {
+  id            String      @id @default(uuid())
+  eventId       String
+  participantId String?
+  storageKey    String
+  url           String
+  thumbnailUrl  String?
+  data          Bytes?
+  mimeType      String
+  sizeBytes     Int?
+  width         Int?
+  height        Int?
+  status        PhotoStatus @default(PENDING)
+  capturedAt    DateTime?
+  uploadedAt    DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([participantId])
+  @@index([status])
+  @@index([uploadedAt])
+}
+
+enum EventStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  FROZEN
+}
+
+enum EventPrivacy {
+  PUBLIC
+  PIN_PROTECTED
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
