@@ -6,7 +6,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   UploadedFiles,
@@ -54,16 +53,21 @@ export class PhotosController {
       dto,
       files,
       this.getPublicOrigin(request),
+      this.getClientIp(request),
     );
   }
 
   @Get(':slug/photos/download')
+  @UseGuards(ClerkAuthGuard)
   async downloadPhotos(
+    @CurrentUserId() clerkId: string,
     @Param('slug') slug: string,
-    @Query('pin') pin: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const download = await this.photosService.downloadApprovedPhotos(slug, pin);
+    const download = await this.photosService.downloadApprovedPhotos(
+      clerkId,
+      slug,
+    );
 
     response.setHeader('Content-Type', 'application/zip');
     response.setHeader(
@@ -117,5 +121,15 @@ export class PhotosController {
 
   private getPublicOrigin(request: Request) {
     return `${request.protocol}://${request.get('host')}`;
+  }
+
+  private getClientIp(request: Request) {
+    const forwardedFor = request.headers['x-forwarded-for'];
+
+    if (typeof forwardedFor === 'string') {
+      return forwardedFor.split(',')[0]?.trim() || request.ip || 'unknown';
+    }
+
+    return request.ip || request.socket.remoteAddress || 'unknown';
   }
 }

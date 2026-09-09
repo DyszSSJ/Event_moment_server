@@ -79,6 +79,7 @@ export class EventsService {
         name: dto.name.trim(),
         slug: await this.createUniqueSlug(dto.name),
         description: this.nullableTrim(dto.description),
+        coverUrl: this.nullableTrim(dto.coverUrl),
         eventDate: dto.eventDate ? new Date(dto.eventDate) : null,
         uploadClosesAt: new Date(
           now.getTime() + durationHours * 60 * 60 * 1000,
@@ -251,6 +252,11 @@ export class EventsService {
     if (dto.description !== undefined) {
       data.description =
         dto.description === null ? null : this.nullableTrim(dto.description);
+    }
+
+    if (dto.coverUrl !== undefined) {
+      data.coverUrl =
+        dto.coverUrl === null ? null : this.nullableTrim(dto.coverUrl);
     }
 
     if (dto.eventDate !== undefined) {

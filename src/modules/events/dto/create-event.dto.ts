@@ -23,6 +23,11 @@ export class CreateEventDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  coverUrl?: string;
+
+  @IsOptional()
   @IsISO8601()
   eventDate?: string;
 

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,8 +20,18 @@ export type UploadedPhotoFile = {
   size: number;
 };
 
+type UploadRateEntry = {
+  at: number;
+  filesCount: number;
+};
+
 @Injectable()
 export class PhotosService {
+  private readonly uploadRateWindowMs = 10 * 60 * 1000;
+  private readonly maxUploadRequestsPerWindow = 8;
+  private readonly maxUploadFilesPerWindow = 36;
+  private readonly uploadRateMap = new Map<string, UploadRateEntry[]>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
@@ -30,6 +42,7 @@ export class PhotosService {
     dto: UploadEventPhotosDto,
     files: UploadedPhotoFile[],
     origin: string,
+    clientIp: string,
   ) {
     if (!files.length) {
       throw new BadRequestException({
@@ -38,6 +51,12 @@ export class PhotosService {
         message: 'At least one file is required',
       });
     }
+
+    this.assertUploadRateLimit(slug, clientIp, files.length);
+    const validatedFiles = files.map((file) => ({
+      ...file,
+      mimetype: this.getVerifiedImageMimeType(file),
+    }));
 
     const guestKey = this.createGuestKey(dto.displayName, dto.email);
     const event = await this.prisma.event.findUnique({
@@ -59,7 +78,7 @@ export class PhotosService {
       });
     }
 
-    this.assertCanUpload(event, dto.pin, files.length);
+    this.assertCanUpload(event, dto.pin, validatedFiles.length);
 
     const participant = await this.prisma.participant.upsert({
       where: {
@@ -80,10 +99,14 @@ export class PhotosService {
       },
     });
 
-    await this.assertParticipantCanUpload(event, participant.id, files.length);
+    await this.assertParticipantCanUpload(
+      event,
+      participant.id,
+      validatedFiles.length,
+    );
 
     const photos = await this.prisma.$transaction(
-      files.map((file) =>
+      validatedFiles.map((file) =>
         this.prisma.photo.create({
           data: {
             eventId: event.id,
@@ -174,14 +197,13 @@ export class PhotosService {
     };
   }
 
-  async downloadApprovedPhotos(slug: string, pin?: string) {
+  async downloadApprovedPhotos(clerkId: string, idOrSlug: string) {
+    const ownedEvent = await this.findOwnedEvent(clerkId, idOrSlug);
     const event = await this.prisma.event.findUnique({
-      where: { slug },
+      where: { id: ownedEvent.id },
       select: {
         name: true,
         slug: true,
-        privacy: true,
-        pinHash: true,
         allowDownloads: true,
         photos: {
           where: {
@@ -217,17 +239,6 @@ export class PhotosService {
         statusCode: 403,
         code: 'EVENT_DOWNLOADS_DISABLED',
         message: 'Event downloads are disabled',
-      });
-    }
-
-    if (
-      event.privacy === EventPrivacy.PIN_PROTECTED &&
-      event.pinHash !== this.hashPin(pin ?? '')
-    ) {
-      throw new ForbiddenException({
-        statusCode: 403,
-        code: 'INVALID_EVENT_PIN',
-        message: 'Invalid event PIN',
       });
     }
 
@@ -431,6 +442,102 @@ export class PhotosService {
         message: 'Participant photo limit reached',
       });
     }
+  }
+
+  private assertUploadRateLimit(
+    slug: string,
+    clientIp: string,
+    filesCount: number,
+  ) {
+    const now = Date.now();
+    const key = `${slug}:${clientIp}`;
+    const recentEntries = (this.uploadRateMap.get(key) ?? []).filter(
+      (entry) => now - entry.at < this.uploadRateWindowMs,
+    );
+    const recentFilesCount = recentEntries.reduce(
+      (total, entry) => total + entry.filesCount,
+      0,
+    );
+
+    if (
+      recentEntries.length >= this.maxUploadRequestsPerWindow ||
+      recentFilesCount + filesCount > this.maxUploadFilesPerWindow
+    ) {
+      throw new HttpException(
+        {
+          statusCode: 429,
+          code: 'UPLOAD_RATE_LIMITED',
+          message: 'Too many uploads. Try again later.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    recentEntries.push({ at: now, filesCount });
+    this.uploadRateMap.set(key, recentEntries);
+  }
+
+  private getVerifiedImageMimeType(file: UploadedPhotoFile) {
+    const mimeType = this.detectImageMimeType(file.buffer);
+
+    if (!mimeType) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'INVALID_FILE_TYPE',
+        message: 'Only valid image files are allowed',
+      });
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'INVALID_FILE_TYPE',
+        message: 'Only image files are allowed',
+      });
+    }
+
+    return mimeType;
+  }
+
+  private detectImageMimeType(buffer: Buffer) {
+    if (buffer.length < 12) {
+      return null;
+    }
+
+    if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+      return 'image/jpeg';
+    }
+
+    if (
+      buffer
+        .subarray(0, 8)
+        .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    ) {
+      return 'image/png';
+    }
+
+    if (
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+      return 'image/webp';
+    }
+
+    if (
+      ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))
+    ) {
+      return 'image/gif';
+    }
+
+    if (buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+      const brand = buffer.subarray(8, 12).toString('ascii');
+
+      if (['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(brand)) {
+        return 'image/heic';
+      }
+    }
+
+    return null;
   }
 
   private async findOwnedEvent(clerkId: string, idOrSlug: string) {

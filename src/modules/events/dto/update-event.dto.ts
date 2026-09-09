@@ -24,6 +24,11 @@ export class UpdateEventDto {
   description?: string | null;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  coverUrl?: string | null;
+
+  @IsOptional()
   @IsISO8601()
   eventDate?: string | null;
 
