@@ -8,7 +8,15 @@ const envSchema = z.object({
   DATABASE_URL: z.string().trim().min(1, 'DATABASE_URL is required'),
   FRONTEND_URL: z
     .string()
-    .url('FRONTEND_URL must be a valid URL')
+    .refine(
+      (value) =>
+        value
+          .split(',')
+          .map((url) => url.trim())
+          .filter(Boolean)
+          .every((url) => z.string().url().safeParse(url).success),
+      'FRONTEND_URL must contain valid URLs separated by commas',
+    )
     .default('http://localhost:3000'),
   CLERK_SECRET_KEY: z.string().trim().min(1, 'CLERK_SECRET_KEY is required'),
   CLERK_PUBLISHABLE_KEY: z

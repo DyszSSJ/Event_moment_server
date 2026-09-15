@@ -11,7 +11,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const port = configService.getOrThrow<number>('app.port');
-  const frontendUrl = configService.getOrThrow<string>('app.frontendUrl');
+  const frontendUrls = configService.getOrThrow<string[]>('app.frontendUrls');
   const clerkSecretKey = configService.getOrThrow<string>('clerk.secretKey');
   const clerkPublishableKey = configService.getOrThrow<string>(
     'clerk.publishableKey',
@@ -19,7 +19,7 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
   app.enableCors({
-    origin: frontendUrl,
+    origin: frontendUrls,
     credentials: true,
   });
   app.use(
