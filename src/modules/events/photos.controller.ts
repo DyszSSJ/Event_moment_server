@@ -30,7 +30,7 @@ export class PhotosController {
   @UseInterceptors(
     FilesInterceptor('files', 12, {
       limits: {
-        fileSize: 1024 * 1024,
+        fileSize: 4 * 1024 * 1024,
       },
       fileFilter: (_request, file, callback) => {
         if (file.mimetype.startsWith('image/')) {
