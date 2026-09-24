@@ -1,0 +1,2 @@
+ALTER TABLE "Event" ADD COLUMN "coverData" BYTEA;
+ALTER TABLE "Event" ADD COLUMN "coverMimeType" TEXT;

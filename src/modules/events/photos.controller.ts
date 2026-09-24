@@ -8,12 +8,13 @@ import {
   Post,
   Req,
   Res,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
   StreamableFile,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 
 import { CurrentUserId } from '../../common/decorators/current-user-id.decorator';
@@ -55,6 +56,50 @@ export class PhotosController {
       this.getPublicOrigin(request),
       this.getClientIp(request),
     );
+  }
+
+  @Patch(':id/cover')
+  @UseGuards(ClerkAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 4 * 1024 * 1024,
+      },
+      fileFilter: (_request, file, callback) => {
+        if (file.mimetype.startsWith('image/')) {
+          callback(null, true);
+          return;
+        }
+
+        callback(null, false);
+      },
+    }),
+  )
+  uploadCover(
+    @CurrentUserId() clerkId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: UploadedPhotoFile | undefined,
+    @Req() request: Request,
+  ) {
+    return this.photosService.uploadCover(
+      clerkId,
+      id,
+      file,
+      this.getPublicOrigin(request),
+    );
+  }
+
+  @Get(':slug/cover')
+  async getCoverFile(
+    @Param('slug') slug: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const cover = await this.photosService.getCoverFile(slug);
+
+    response.setHeader('Content-Type', cover.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+    return new StreamableFile(Buffer.from(cover.data));
   }
 
   @Get(':slug/photos/download')
@@ -120,7 +165,18 @@ export class PhotosController {
   }
 
   private getPublicOrigin(request: Request) {
-    return `${request.protocol}://${request.get('host')}`;
+    const forwardedProto = request.headers['x-forwarded-proto'];
+    const forwardedHost = request.headers['x-forwarded-host'];
+    const protocol =
+      typeof forwardedProto === 'string'
+        ? forwardedProto.split(',')[0]?.trim()
+        : request.protocol;
+    const host =
+      typeof forwardedHost === 'string'
+        ? forwardedHost.split(',')[0]?.trim()
+        : request.get('host');
+
+    return `${protocol}://${host}`;
   }
 
   private getClientIp(request: Request) {

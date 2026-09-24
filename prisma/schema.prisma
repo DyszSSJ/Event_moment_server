@@ -22,6 +22,8 @@ model Event {
   slug            String        @unique
   description     String?
   coverUrl        String?
+  coverData       Bytes?
+  coverMimeType   String?
   eventDate       DateTime?
   uploadClosesAt  DateTime?
   revealAt        DateTime?

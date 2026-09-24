@@ -197,6 +197,68 @@ export class PhotosService {
     };
   }
 
+  async uploadCover(
+    clerkId: string,
+    idOrSlug: string,
+    file: UploadedPhotoFile | undefined,
+    origin: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'NO_COVER_UPLOADED',
+        message: 'A cover image is required',
+      });
+    }
+
+    const event = await this.findOwnedEvent(clerkId, idOrSlug);
+    const mimetype = this.getVerifiedImageMimeType(file);
+    const coverUrl = `${origin}/api/v1/events/${event.slug}/cover`;
+
+    const updatedEvent = await this.prisma.event.update({
+      where: { id: event.id },
+      data: {
+        coverData: new Uint8Array(file.buffer),
+        coverMimeType: mimetype,
+        coverUrl,
+      },
+      select: {
+        id: true,
+        slug: true,
+        coverUrl: true,
+      },
+    });
+
+    return {
+      id: updatedEvent.id,
+      slug: updatedEvent.slug,
+      coverUrl: updatedEvent.coverUrl,
+    };
+  }
+
+  async getCoverFile(slug: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { slug },
+      select: {
+        coverData: true,
+        coverMimeType: true,
+      },
+    });
+
+    if (!event?.coverData || !event.coverMimeType) {
+      throw new NotFoundException({
+        statusCode: 404,
+        code: 'COVER_NOT_FOUND',
+        message: 'Cover not found',
+      });
+    }
+
+    return {
+      data: event.coverData,
+      mimeType: event.coverMimeType,
+    };
+  }
+
   async downloadApprovedPhotos(clerkId: string, idOrSlug: string) {
     const ownedEvent = await this.findOwnedEvent(clerkId, idOrSlug);
     const event = await this.prisma.event.findUnique({
@@ -549,6 +611,7 @@ export class PhotosService {
       select: {
         id: true,
         ownerId: true,
+        slug: true,
       },
     });
 
