@@ -19,6 +19,7 @@ import type { Request, Response } from 'express';
 
 import { CurrentUserId } from '../../common/decorators/current-user-id.decorator';
 import { ClerkAuthGuard } from '../../common/guards/clerk-auth.guard';
+import { BulkUpdatePhotoStatusDto } from './dto/bulk-update-photo-status.dto';
 import { UpdatePhotoStatusDto } from './dto/update-photo-status.dto';
 import { UploadEventPhotosDto } from './dto/upload-event-photos.dto';
 import { PhotosService, type UploadedPhotoFile } from './photos.service';
@@ -154,6 +155,21 @@ export class PhotosController {
       id,
       photoId,
       dto.status,
+    );
+  }
+
+  @Patch(':id/photos/bulk-status')
+  @UseGuards(ClerkAuthGuard)
+  updatePhotosBulkStatus(
+    @CurrentUserId() clerkId: string,
+    @Param('id') id: string,
+    @Body() dto: BulkUpdatePhotoStatusDto,
+  ) {
+    return this.photosService.updatePhotosBulkStatus(
+      clerkId,
+      id,
+      dto.status,
+      dto.fromStatus ?? 'pending',
     );
   }
 

@@ -401,6 +401,29 @@ export class PhotosService {
     };
   }
 
+  async updatePhotosBulkStatus(
+    clerkId: string,
+    idOrSlug: string,
+    status: 'pending' | 'approved' | 'rejected',
+    fromStatus: 'pending' | 'approved' | 'rejected' = 'pending',
+  ) {
+    const event = await this.findOwnedEvent(clerkId, idOrSlug);
+    const result = await this.prisma.photo.updateMany({
+      where: {
+        eventId: event.id,
+        status: this.toPhotoStatus(fromStatus),
+      },
+      data: {
+        status: this.toPhotoStatus(status),
+      },
+    });
+
+    return {
+      updated: result.count,
+      status,
+    };
+  }
+
   async removePhoto(clerkId: string, idOrSlug: string, photoId: string) {
     const event = await this.findOwnedEvent(clerkId, idOrSlug);
     const photo = await this.prisma.photo.findFirst({
