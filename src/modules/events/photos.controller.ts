@@ -23,15 +23,18 @@ import { UpdatePhotoStatusDto } from './dto/update-photo-status.dto';
 import { UploadEventPhotosDto } from './dto/upload-event-photos.dto';
 import { PhotosService, type UploadedPhotoFile } from './photos.service';
 
+const maxPhotoUploadFileSize = 8 * 1024 * 1024;
+const maxCoverUploadFileSize = 4 * 1024 * 1024;
+
 @Controller('events')
 export class PhotosController {
   constructor(private readonly photosService: PhotosService) {}
 
   @Post(':slug/photos')
   @UseInterceptors(
-    FilesInterceptor('files', 12, {
+    FilesInterceptor('files', 50, {
       limits: {
-        fileSize: 4 * 1024 * 1024,
+        fileSize: maxPhotoUploadFileSize,
       },
       fileFilter: (_request, file, callback) => {
         if (file.mimetype.startsWith('image/')) {
@@ -63,7 +66,7 @@ export class PhotosController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: 4 * 1024 * 1024,
+        fileSize: maxCoverUploadFileSize,
       },
       fileFilter: (_request, file, callback) => {
         if (file.mimetype.startsWith('image/')) {

@@ -29,7 +29,7 @@ type UploadRateEntry = {
 export class PhotosService {
   private readonly uploadRateWindowMs = 10 * 60 * 1000;
   private readonly maxUploadRequestsPerWindow = 8;
-  private readonly maxUploadFilesPerWindow = 36;
+  private readonly maxUploadFilesPerWindow = 500;
   private readonly uploadRateMap = new Map<string, UploadRateEntry[]>();
 
   constructor(

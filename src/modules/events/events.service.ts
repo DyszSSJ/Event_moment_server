@@ -100,7 +100,7 @@ export class EventsService {
         bestOfOn: dto.bestOfOn ?? false,
         disposableOn: dto.disposableOn ?? false,
         photosPerGuest: dto.photosPerGuest ?? 12,
-        maxPhotos: dto.maxPhotos ?? 150,
+        maxPhotos: dto.maxPhotos ?? null,
       },
       include: eventInclude,
     });
